@@ -1,0 +1,9 @@
+python-dotenv
+langchain
+langchain-google-genai
+langchain-huggingface
+chromadb
+gradio
+pypdf
+transformers
+torch
