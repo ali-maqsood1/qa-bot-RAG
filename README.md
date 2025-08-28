@@ -9,6 +9,13 @@ A simple **Retrieval‑Augmented Generation (RAG)** app that answers questions a
 
 ---
 
+## ✨ ScreenShot
+<img width="1284" height="657" alt="Screenshot 2025-08-28 at 9 12 17 AM" src="https://github.com/user-attachments/assets/a61f4d80-f58e-40ce-ba87-25c17fe8055f" />
+
+
+
+---
+
 ## ✨ Features
 - Upload a PDF and ask natural‑language questions about its contents.
 - Contextual compression retriever to reduce irrelevant text before the LLM.
