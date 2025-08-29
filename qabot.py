@@ -23,10 +23,10 @@ warnings.filterwarnings('ignore')
 # --- LLM (Gemini) ---
 def get_llm():
     return ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash",
+        model="gemini-1.5-flash", # GEMMA-27B-IT # EPOCH
         google_api_key=GEMINI_API_KEY,
-        temperature=0.2,             # factual over creative
-        max_output_tokens=512        # allow longer, detailed answers
+        temperature=0.7,             # factual over creative
+        max_output_tokens=1024        # allow longer, detailed answers
     )
 
 # --- PDF Loader ---
