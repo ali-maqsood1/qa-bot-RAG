@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 
-# Loading environment variables
+# --- Load environment variables ---
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_KEY")
 
@@ -12,33 +12,29 @@ from langchain.vectorstores import Chroma
 from langchain.document_loaders import PyPDFLoader
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
-from langchain.retrievers import ContextualCompressionRetriever
-from langchain.retrievers.document_compressors import LLMChainExtractor
 import gradio as gr
-
-# --- Suppress warnings ---
 import warnings
 warnings.filterwarnings('ignore')
 
 # --- LLM (Gemini) ---
 def get_llm():
     return ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash", # GEMMA-27B-IT # EPOCH
+        model="gemma-3-27b-it",       # LLM model
         google_api_key=GEMINI_API_KEY,
-        temperature=0.7,             # factual over creative
-        max_output_tokens=1024        # allow longer, detailed answers
+        temperature=0.7,             # factual
+        max_output_tokens=4096       # smaller = faster
     )
 
 # --- PDF Loader ---
-def document_loader(file):
-    loader = PyPDFLoader(file.name)
+def document_loader(file_path):
+    loader = PyPDFLoader(file_path)
     return loader.load()
 
 # --- Text Splitter ---
 def text_splitter(data):
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=150,
+        chunk_size=1500,
+        chunk_overlap=200,
         length_function=len
     )
     return splitter.split_documents(data)
@@ -47,25 +43,37 @@ def text_splitter(data):
 def embedding_model():
     return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
-# --- Vector Database ---
-def vector_database(chunks):
-    embeddings = embedding_model()
-    return Chroma.from_documents(chunks, embeddings)
+# --- Chroma Database (persistent) ---
+PERSIST_DIR = "chroma_storage"
+retriever_cache = {}
 
-# --- Retriever with compression ---
-def retriever(file):
-    docs = document_loader(file)
-    chunks = text_splitter(docs)
-    vectordb = vector_database(chunks)
-    base_retriever = vectordb.as_retriever(search_kwargs={"k":5})
-    
-    # Compress irrelevant parts before passing to LLM
-    compressor = LLMChainExtractor.from_llm(get_llm())
-    compressed_retriever = ContextualCompressionRetriever(
-        base_compressor=compressor,
-        base_retriever=base_retriever
-    )
-    return compressed_retriever
+def build_or_load_vectorstore(file_path):
+    """Build a new Chroma DB for this PDF if not cached, else load from disk."""
+    embeddings = embedding_model()
+    pdf_name = os.path.splitext(os.path.basename(file_path))[0]
+    pdf_db_dir = os.path.join(PERSIST_DIR, pdf_name)
+
+    # If DB already exists, load it
+    if os.path.exists(pdf_db_dir):
+        vectordb = Chroma(persist_directory=pdf_db_dir, embedding_function=embeddings)
+    else:
+        os.makedirs(pdf_db_dir, exist_ok=True)
+        docs = document_loader(file_path)
+        chunks = text_splitter(docs)
+        vectordb = Chroma.from_documents(
+            chunks,
+            embeddings,
+            persist_directory=pdf_db_dir
+        )
+        vectordb.persist()
+    return vectordb
+
+def get_retriever(file_path):
+    """Cache the retriever for this PDF to avoid rebuilding every query."""
+    if file_path not in retriever_cache:
+        vectordb = build_or_load_vectorstore(file_path)
+        retriever_cache[file_path] = vectordb.as_retriever(search_kwargs={"k":8})
+    return retriever_cache[file_path]
 
 # --- Prompt ---
 prompt_template = """
@@ -91,7 +99,7 @@ PROMPT = PromptTemplate(
 # --- Retrieval QA ---
 def retriever_qa(file, query):
     llm = get_llm()
-    retriever_obj = retriever(file)
+    retriever_obj = get_retriever(file.name)
     qa = RetrievalQA.from_chain_type(
         llm=llm,
         chain_type="stuff",
